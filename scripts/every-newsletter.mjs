@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const NEWSLETTER_URL = "https://every.to/newsletter";
 const SKILL_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_MODEL = process.env.EVERY_NEWSLETTER_MODEL || "gpt-5.4-mini";
+const DEFAULT_MODEL = process.env.EVERY_NEWSLETTER_MODEL || "deepseek-v4-pro";
+const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 
 const LOCKED_SIGNALS = [
   "Create a free account to continue reading",
@@ -55,10 +56,17 @@ function parseArgs(argv) {
     limit: 10,
     processor: process.env.EVERY_NEWSLETTER_PROCESSOR || "prompt",
     model: DEFAULT_MODEL,
+    url: "",
+    title: "",
     dryRun: false,
     retrySkipped: false,
     push: true,
   };
+
+  if (args.command === "--help" || args.command === "-h") {
+    args.command = "help";
+    return args;
+  }
 
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -66,6 +74,8 @@ function parseArgs(argv) {
     else if (arg === "--limit") args.limit = Number.parseInt(argv[++index], 10);
     else if (arg === "--processor") args.processor = argv[++index];
     else if (arg === "--model") args.model = argv[++index];
+    else if (arg === "--url") args.url = argv[++index];
+    else if (arg === "--title") args.title = argv[++index];
     else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--retry-skipped") args.retrySkipped = true;
     else if (arg === "--no-push") args.push = false;
@@ -82,9 +92,10 @@ function printHelp() {
 
 Usage:
   every-newsletter.mjs check [--limit 10] [--root .]
-  every-newsletter.mjs process [--limit 3] [--processor prompt|openai|none]
+  every-newsletter.mjs process [--limit 3] [--processor prompt|deepseek|openai|none]
+  every-newsletter.mjs process --url https://every.to/... [--processor deepseek]
   every-newsletter.mjs publish [--no-push]
-  every-newsletter.mjs run [--limit 3] [--processor prompt|openai|none]
+  every-newsletter.mjs run [--limit 3] [--processor prompt|deepseek|openai|none]
   every-newsletter.mjs index
 
 Defaults:
@@ -522,40 +533,43 @@ function assertDraftQuality(drafts) {
   }
 }
 
-async function callOpenAI({ systemPrompt, userPrompt, model }) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is required for --processor openai");
+async function callDeepSeek({ systemPrompt, userPrompt, model }) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error("DEEPSEEK_API_KEY is required for --processor deepseek");
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const requestBody = {
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    stream: false,
+  };
+
+  if (process.env.EVERY_NEWSLETTER_REASONING_EFFORT) {
+    requestBody.reasoning_effort = process.env.EVERY_NEWSLETTER_REASONING_EFFORT;
+  }
+  if (process.env.EVERY_NEWSLETTER_THINKING) {
+    requestBody.thinking = { type: process.env.EVERY_NEWSLETTER_THINKING };
+  }
+
+  const response = await fetch(`${DEEPSEEK_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenAI request failed ${response.status}: ${errorText}`);
+    throw new Error(`DeepSeek request failed ${response.status}: ${errorText}`);
   }
 
   const json = await response.json();
-  if (json.output_text) return json.output_text.trim();
-  const chunks = [];
-  for (const item of json.output || []) {
-    for (const content of item.content || []) {
-      if (content.text) chunks.push(content.text);
-    }
-  }
-  const text = chunks.join("\n").trim();
-  if (!text) throw new Error("OpenAI response did not include text output");
+  const text = json.choices?.[0]?.message?.content?.trim() || "";
+  if (!text) throw new Error("DeepSeek response did not include message content");
   return text;
 }
 
@@ -586,17 +600,17 @@ async function writePromptPacket(root, article) {
   return packetDir;
 }
 
-async function processWithOpenAI(article, model) {
+async function processWithDeepSeek(article, model) {
   const rewritePrompt = await readPrompt("rewrite-zh.md");
   const sproutPrompt = await readPrompt("material-sprout.md");
   const payload = articlePromptPayload(article);
   const [rewrite, sprout] = await Promise.all([
-    callOpenAI({
+    callDeepSeek({
       model,
       systemPrompt: rewritePrompt,
       userPrompt: payload,
     }),
-    callOpenAI({
+    callDeepSeek({
       model,
       systemPrompt: sproutPrompt,
       userPrompt: payload,
@@ -700,7 +714,9 @@ async function commandCheck(args) {
 
 async function commandProcess(args) {
   await ensureRepoDirs(args.root);
-  const items = await discover(args.limit);
+  const items = args.url
+    ? [{ title: args.title || args.url, url: normalizeUrl(args.url), source: "manual" }]
+    : await discover(args.limit);
   const doneUrls = await processedUrls(args.root);
   const skippedPath = path.join(args.root, "content", "skipped.json");
   const skipped = await readJson(skippedPath, []);
@@ -736,8 +752,8 @@ async function commandProcess(args) {
       const packetDir = await writePromptPacket(args.root, article);
       console.log(`Prompt packet: ${path.relative(args.root, packetDir)}`);
       results.push({ status: "prompt", title: article.title, url: article.url });
-    } else if (args.processor === "openai") {
-      const drafts = await processWithOpenAI(article, args.model);
+    } else if (args.processor === "deepseek" || args.processor === "openai") {
+      const drafts = await processWithDeepSeek(article, args.model);
       const filePath = await writeArticle(args.root, article, drafts, "processed");
       console.log(`Article written: ${path.relative(args.root, filePath)}`);
       results.push({ status: "processed", title: article.title, url: article.url });
@@ -747,7 +763,7 @@ async function commandProcess(args) {
         article,
         {
           rewrite: `<!-- Source text captured for debugging. -->\n\n${article.text}`,
-          sprout: "_Not generated. Re-run with --processor prompt or --processor openai._",
+          sprout: "_Not generated. Re-run with --processor prompt or --processor deepseek._",
         },
         "captured",
       );

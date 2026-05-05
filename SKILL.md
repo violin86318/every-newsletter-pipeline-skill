@@ -30,22 +30,23 @@ When setting this up on another computer, clone the skill repository into `~/.ag
 ```bash
 node ~/.agents/skills/every-newsletter-pipeline/scripts/every-newsletter.mjs check --limit 5
 node ~/.agents/skills/every-newsletter-pipeline/scripts/every-newsletter.mjs process --limit 1 --processor prompt
-node ~/.agents/skills/every-newsletter-pipeline/scripts/every-newsletter.mjs process --limit 1 --processor openai
+node ~/.agents/skills/every-newsletter-pipeline/scripts/every-newsletter.mjs process --limit 1 --processor deepseek --model deepseek-v4-pro
 node ~/.agents/skills/every-newsletter-pipeline/scripts/every-newsletter.mjs publish
-node ~/.agents/skills/every-newsletter-pipeline/scripts/every-newsletter.mjs run --limit 3 --processor openai
+node ~/.agents/skills/every-newsletter-pipeline/scripts/every-newsletter.mjs run --limit 3 --processor deepseek --model deepseek-v4-pro
 ```
 
 If running through the website repository wrapper, use:
 
 ```bash
 npm run every:check -- --limit 5
-npm run every:run -- --limit 3 --processor openai
+npm run every:run -- --limit 3 --processor deepseek --model deepseek-v4-pro
 ```
 
 ## Processor Modes
 
 - `prompt`: writes prompt packets to `processing/pending/{slug}/`. Use this when an Agent will generate the drafts manually or through its own model integration.
-- `openai`: requires `OPENAI_API_KEY`; calls the OpenAI Responses API and writes the article Markdown directly.
+- `deepseek`: requires `DEEPSEEK_API_KEY`; calls DeepSeek's OpenAI-compatible chat completions API and writes the article Markdown directly.
+- `openai`: backward-compatible alias for `deepseek` in this script. Prefer `deepseek` for new automation.
 - `none`: fetches metadata and article text only; useful for debugging extraction.
 
 Do not put LLM API keys into GitHub Actions unless the user explicitly changes that architecture.
@@ -65,7 +66,7 @@ Server/OpenClaw/Claude Code runners need:
 - Node.js 22+
 - Git
 - network access to `https://every.to/newsletter`
-- optional `OPENAI_API_KEY` for `--processor openai`
+- optional `DEEPSEEK_API_KEY` for `--processor deepseek`
 - GitHub credentials if using `publish`
 
 ## Daily Automation
@@ -73,7 +74,7 @@ Server/OpenClaw/Claude Code runners need:
 For unattended updates, schedule this from the website repository root:
 
 ```bash
-npm run every:run -- --limit 3 --processor openai
+npm run every:run -- --limit 3 --processor deepseek --model deepseek-v4-pro
 ```
 
 This command processes new articles, commits generated Markdown, pushes to GitHub, and lets the website repository's GitHub Actions workflow deploy Cloudflare Pages.

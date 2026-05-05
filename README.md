@@ -37,8 +37,8 @@ Use this skill repository:
 https://github.com/violin86318/every-newsletter-pipeline-skill
 
 Install it as the every-newsletter-pipeline skill, clone the website repository
-https://github.com/violin86318/every-to-newsletter, configure OPENAI_API_KEY and GitHub push access, then schedule the daily command:
-npm run every:run -- --limit 3 --processor openai
+https://github.com/violin86318/every-to-newsletter, configure DEEPSEEK_API_KEY and GitHub push access, then schedule the daily command:
+npm run every:run -- --limit 3 --processor deepseek --model deepseek-v4-pro
 
 Run the daily command from the website repository root. When it pushes new Markdown to GitHub, GitHub Actions will rebuild and deploy https://every.beyondmotion.net automatically.
 ```
@@ -85,13 +85,13 @@ If there is nothing to push, Git may say everything is up to date. That is fine.
 For fully automatic generation, set:
 
 ```bash
-export OPENAI_API_KEY="..."
+export DEEPSEEK_API_KEY="..."
 ```
 
 Optional:
 
 ```bash
-export EVERY_NEWSLETTER_MODEL="gpt-5.4-mini"
+export EVERY_NEWSLETTER_MODEL="deepseek-v4-pro"
 export EVERY_NEWSLETTER_SKILL_DIR="$HOME/.agents/skills/every-newsletter-pipeline"
 ```
 
@@ -103,7 +103,7 @@ Run from the website repository root:
 
 ```bash
 cd ~/every-to-newsletter
-npm run every:run -- --limit 3 --processor openai
+npm run every:run -- --limit 3 --processor deepseek --model deepseek-v4-pro
 ```
 
 This command does the full update:
@@ -119,16 +119,16 @@ This command does the full update:
 
 ## Beijing 09:00 Cron
 
-Use this on the machine that has the website repo, the skill, `OPENAI_API_KEY`, and GitHub push access:
+Use this on the machine that has the website repo, the skill, `DEEPSEEK_API_KEY`, and GitHub push access:
 
 ```cron
-0 9 * * * cd /Users/YOUR_USER/every-to-newsletter && /usr/bin/env OPENAI_API_KEY=YOUR_KEY npm run every:run -- --limit 3 --processor openai
+0 9 * * * cd /Users/YOUR_USER/every-to-newsletter && /usr/bin/env DEEPSEEK_API_KEY=YOUR_KEY npm run every:run -- --limit 3 --processor deepseek --model deepseek-v4-pro
 ```
 
 If you prefer loading environment variables from your shell profile, keep the cron command simpler:
 
 ```cron
-0 9 * * * cd /Users/YOUR_USER/every-to-newsletter && npm run every:run -- --limit 3 --processor openai
+0 9 * * * cd /Users/YOUR_USER/every-to-newsletter && npm run every:run -- --limit 3 --processor deepseek --model deepseek-v4-pro
 ```
 
 ## Manual Commands
