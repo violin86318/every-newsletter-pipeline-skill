@@ -1,0 +1,3 @@
+display_name: Every Newsletter Pipeline
+short_description: Discover Every.to updates, skip locked articles, and prepare Chinese rewrite plus sprout-note drafts.
+default_prompt: Run the Every.to newsletter pipeline from the website repository root, then summarize new processed, skipped, or pending articles.
