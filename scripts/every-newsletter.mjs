@@ -49,6 +49,23 @@ const NON_ARTICLE_SECTIONS = new Set([
   "team",
 ]);
 
+async function loadLocalEnv(root) {
+  for (const name of [".env.local", ".env"]) {
+    try {
+      const raw = await fs.readFile(path.join(root, name), "utf8");
+      for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+        if (!match || process.env[match[1]]) continue;
+        process.env[match[1]] = match[2].replace(/^["']|["']$/g, "");
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+}
+
 function parseArgs(argv) {
   const args = {
     command: argv[0] || "check",
@@ -818,6 +835,7 @@ async function commandPublish(args) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  await loadLocalEnv(args.root);
   if (args.command === "help") {
     printHelp();
     return;
