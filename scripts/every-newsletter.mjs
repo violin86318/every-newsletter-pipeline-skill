@@ -221,16 +221,6 @@ function extractArticleImages(html) {
   return images;
 }
 
-function imagesToMarkdown(images = []) {
-  if (!images.length) return "";
-  return images
-    .map((image, index) => {
-      const alt = image.alt || `Original article image ${index + 1}`;
-      return `![${alt}](${image.url})`;
-    })
-    .join("\n\n");
-}
-
 function extractBalancedDiv(html, startIndex) {
   const openStart = html.lastIndexOf("<div", startIndex);
   if (openStart < 0) return "";
@@ -268,6 +258,31 @@ function imageTagToMarkdown(tag) {
   return `\n\n![${alt}](${src})\n\n`;
 }
 
+function removeEveryNewsletterBoilerplate(markdown) {
+  let output = markdown;
+
+  const startPatterns = [
+    /^(?:\*|_)?Was this newsletter forwarded to you\?[\s\S]*?(?:\*|_)?\n+/i,
+    /^Hello, and happy Sunday!\s*Was this newsletter forwarded to you\?[\s\S]*?\n+/i,
+  ];
+  for (const pattern of startPatterns) output = output.replace(pattern, "");
+
+  const footerPatterns = [
+    /\n+That[’']s all for this week![\s\S]*$/i,
+    /\n+To read more essays like this,[\s\S]*$/i,
+    /\n+For sponsorship opportunities,[\s\S]*$/i,
+    /\n+We build AI tools for readers like you[\s\S]*$/i,
+    /\n+Subscribe\s*\n+\s*What did you think of this post\?[\s\S]*$/i,
+    /\n+What did you think of this post\?[\s\S]*$/i,
+    /\n+Upgrade to paid[\s\S]*$/i,
+  ];
+  for (const pattern of footerPatterns) output = output.replace(pattern, "");
+
+  return output
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function htmlToPromptMarkdown(html) {
   let markdown = html
     .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
@@ -289,7 +304,7 @@ function htmlToPromptMarkdown(html) {
     },
   );
 
-  return decodeEntities(
+  const converted = decodeEntities(
     markdown
       .replace(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi, (_, content) => `\n\n# ${tagContentToMarkdown(content)}\n\n`)
       .replace(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi, (_, content) => `\n\n## ${tagContentToMarkdown(content)}\n\n`)
@@ -312,6 +327,7 @@ function htmlToPromptMarkdown(html) {
       .replace(/[ \t]{2,}/g, " ")
       .trim(),
   );
+  return removeEveryNewsletterBoilerplate(converted);
 }
 
 function extractMeta(html, property) {
@@ -537,15 +553,45 @@ Images:
 
 ${article.images?.length ? article.images.map((image, index) => `${index + 1}. ${image.alt || "Original article image"}\n   ${image.url}`).join("\n") : "No article images found."}
 
+Automation quality standard:
+
+- The expected quality bar is the manually corrected site articles: complete, faithful, clean, and publication-ready.
+- Preserve the original article structure and paragraph order unless a paragraph is pure newsletter boilerplate.
+- Preserve every meaningful original image in the rewrite at the closest corresponding location. Keep the Markdown image URL unchanged.
+- Do not place all images at the top or bottom.
+- Do not translate footer widgets, subscription buttons, sponsorship boilerplate, or article feedback controls.
+- The sprout note must stay grounded in the article. Do not introduce external historical cases, famous people, books, researchers, companies, statistics, or theories unless the source article explicitly mentions them.
+- If you use an insight sentence, make it traceable to the source article.
+
 Article:
 
 ${article.sourceMarkdown || article.text}`;
 }
 
-function assertDraftQuality(drafts) {
+function assertDraftQuality(drafts, article = {}) {
   for (const [name, value] of Object.entries(drafts)) {
     if (!value || value.trim().length < 200) {
       throw new Error(`${name} draft is too short; refusing to write low-quality article`);
+    }
+  }
+  const inlineImages = (article.images || []).filter((image) => image.url.includes("/uploads/editor/posts/"));
+  if (inlineImages.length) {
+    const missing = inlineImages.filter((image) => !drafts.rewrite.includes(image.url));
+    if (missing.length) {
+      throw new Error(
+        `rewrite draft is missing ${missing.length}/${inlineImages.length} inline image(s): ${missing
+          .map((image) => image.url)
+          .join(", ")}`,
+      );
+    }
+  }
+  const forbiddenSproutPatterns = [
+    /MIT|Stefan Thomke|Amazon|亚马逊|巴菲特|Mike Flint|Visa|Mastercard|BankAmericard|Gary Klein|James Reason/i,
+    /19\s*世纪|1970\s*年代|中世纪|工业革命|信用卡产业|航空安全/i,
+  ];
+  for (const pattern of forbiddenSproutPatterns) {
+    if (pattern.test(drafts.sprout || "")) {
+      throw new Error("sprout draft appears to introduce external examples; refusing to write over-expanded note");
     }
   }
 }
@@ -634,7 +680,7 @@ async function processWithDeepSeek(article, model) {
     }),
   ]);
   const drafts = { rewrite, sprout };
-  assertDraftQuality(drafts);
+  assertDraftQuality(drafts, article);
   return drafts;
 }
 
