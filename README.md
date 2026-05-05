@@ -28,6 +28,21 @@ Production site:
 https://every.beyondmotion.net
 ```
 
+## Give This To Another Agent
+
+You can give another computer/OpenClaw this instruction:
+
+```text
+Use this skill repository:
+https://github.com/violin86318/every-newsletter-pipeline-skill
+
+Install it as the every-newsletter-pipeline skill, clone the website repository
+https://github.com/violin86318/every-to-newsletter, configure OPENAI_API_KEY and GitHub push access, then schedule the daily command:
+npm run every:run -- --limit 3 --processor openai
+
+Run the daily command from the website repository root. When it pushes new Markdown to GitHub, GitHub Actions will rebuild and deploy https://every.beyondmotion.net automatically.
+```
+
 ## Install The Skill
 
 Recommended entity location:
